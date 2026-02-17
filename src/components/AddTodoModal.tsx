@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,11 +30,29 @@ export function AddTodoModal({
   currentIdentityId,
   editingTodo,
 }: AddTodoModalProps) {
-  const [title, setTitle] = useState(editingTodo?.title || '');
-  const [description, setDescription] = useState(editingTodo?.description || '');
-  const [priority, setPriority] = useState<Priority>(editingTodo?.priority || 'not-urgent-not-important');
-  const [selectedCategory, setSelectedCategory] = useState(editingTodo?.categoryId || undefined);
-  const [dueDate, setDueDate] = useState<Date | undefined>(editingTodo?.dueDate);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<Priority>('not-urgent-not-important');
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
+  const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+
+  // 当 editingTodo 变化时，更新表单状态
+  useEffect(() => {
+    if (editingTodo) {
+      setTitle(editingTodo.title || '');
+      setDescription(editingTodo.description || '');
+      setPriority(editingTodo.priority || 'not-urgent-not-important');
+      setSelectedCategory(editingTodo.categoryId || undefined);
+      setDueDate(editingTodo.dueDate);
+    } else {
+      // 重置表单
+      setTitle('');
+      setDescription('');
+      setPriority('not-urgent-not-important');
+      setSelectedCategory(undefined);
+      setDueDate(undefined);
+    }
+  }, [editingTodo]);
 
   const handleSave = () => {
     const titleValidation = ValidationUtils.validateTitle(title);
@@ -182,7 +200,7 @@ export function AddTodoModal({
           <View style={styles.section}>
             <Text style={styles.label}>优先级 *</Text>
             <View style={styles.priorityContainer}>
-              {Object.keys(PRIORITIES).map(renderPriorityOption)}
+              {(Object.keys(PRIORITIES) as Priority[]).map(renderPriorityOption)}
             </View>
           </View>
 
