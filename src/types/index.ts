@@ -104,7 +104,18 @@ export interface FilterOptions {
 
 export type Priority = 'urgent-important' | 'important-not-urgent' | 'urgent-not-important' | 'not-urgent-not-important';
 
-export type CategoryColor = 'black' | 'gray' | 'white';
+export type CategoryColor = 
+  | 'red'
+  | 'orange' 
+  | 'yellow'
+  | 'green'
+  | 'blue'
+  | 'purple'
+  | 'pink'
+  | 'gray'
+  | 'black'
+  | 'cyan'
+  | 'teal';
 
 export type TodoStatus = 'pending' | 'claimed' | 'in-progress' | 'completed';
 

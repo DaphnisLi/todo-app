@@ -5,10 +5,19 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { useIdentities } from './src/hooks/useIdentities';
 import { useAppState } from './src/hooks/useAppState';
 import { Identity } from './src/types';
+import { NotificationManager } from './src/utils/notifications';
 
 export default function App() {
   const { identities, addIdentity, getDefaultIdentity, loading: identitiesLoading } = useIdentities();
   const { appState, setCurrentIdentityId, loading: appStateLoading } = useAppState();
+
+  // 初始化通知权限
+  useEffect(() => {
+    const initializeNotifications = async () => {
+      await NotificationManager.requestPermissions();
+    };
+    initializeNotifications();
+  }, []);
 
   // 初始化默认身份
   useEffect(() => {

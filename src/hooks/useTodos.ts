@@ -3,6 +3,7 @@ import { Todo, FilterOptions, SortOption, SortOrder } from '../types';
 import { StorageService } from '../storage';
 import { ArrayUtils, DateUtils } from '../utils';
 import { PRIORITIES } from '../constants';
+import { TodoNotificationManager } from '../utils/notifications';
 
 export function useTodos() {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -51,6 +52,16 @@ export function useTodos() {
       updatedAt: new Date(),
     };
 
+    // 如果有截止日期，安排通知
+    if (newTodo.dueDate) {
+      await TodoNotificationManager.scheduleTodoReminder(
+        newTodo.id,
+        newTodo.title,
+        newTodo.description,
+        newTodo.dueDate
+      );
+    }
+
     const newTodos = [newTodo, ...todos];
     await saveTodos(newTodos);
     return newTodo;
@@ -58,16 +69,39 @@ export function useTodos() {
 
   // 更新待办事项
   const updateTodo = useCallback(async (id: string, updates: Partial<Todo>) => {
+    const existingTodo = todos.find(todo => todo.id === id);
+    
+    // 取消旧通知
+    if (existingTodo?.dueDate) {
+      await TodoNotificationManager.cancelTodoReminder(id);
+    }
+
     const newTodos = todos.map(todo =>
       todo.id === id
         ? { ...todo, ...updates, updatedAt: new Date() }
         : todo
     );
+
+    const updatedTodo = newTodos.find(todo => todo.id === id);
+    
+    // 如果有新的截止日期，安排新通知
+    if (updatedTodo?.dueDate) {
+      await TodoNotificationManager.scheduleTodoReminder(
+        updatedTodo.id,
+        updatedTodo.title,
+        updatedTodo.description,
+        updatedTodo.dueDate
+      );
+    }
+
     await saveTodos(newTodos);
   }, [todos, saveTodos]);
 
   // 删除待办事项（软删除）
   const deleteTodo = useCallback(async (id: string) => {
+    // 取消通知
+    await TodoNotificationManager.cancelTodoReminder(id);
+    
     const newTodos = todos.map(todo =>
       todo.id === id
         ? { ...todo, deletedAt: new Date(), updatedAt: new Date() }

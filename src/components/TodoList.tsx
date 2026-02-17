@@ -4,45 +4,47 @@ import {
   FlatList,
   Text,
   StyleSheet,
-  RefreshControl,
-  TouchableOpacity,
 } from 'react-native';
-import { Todo } from '../types';
+import { Todo, Category } from '../types';
 import { TodoItem } from './TodoItem';
 import { SPACING, FONT_SIZES } from '../constants';
 
 interface TodoListProps {
   todos: Todo[];
-  loading: boolean;
-  onRefresh: () => void;
   onPressTodo: (todo: Todo) => void;
   onToggleComplete: (id: string) => void;
   onEditTodo: (todo: Todo) => void;
   onDeleteTodo: (id: string) => void;
-  onReorder: (fromIndex: number, toIndex: number) => void;
+  onReorder?: (fromIndex: number, toIndex: number) => void;
   renderEmpty?: () => React.ReactNode;
+  categories?: Category[];
+  getCategoryName?: (categoryId: string | undefined) => string;
 }
 
 export function TodoList({
   todos,
-  loading,
-  onRefresh,
   onPressTodo,
   onToggleComplete,
   onEditTodo,
   onDeleteTodo,
-  onReorder,
   renderEmpty,
+  categories,
+  getCategoryName,
 }: TodoListProps) {
-  const renderItem = ({ item, index }: { item: Todo; index: number }) => (
-    <TodoItem
-      todo={item}
-      onPress={onPressTodo}
-      onToggleComplete={onToggleComplete}
-      onEdit={onEditTodo}
-      onDelete={onDeleteTodo}
-    />
-  );
+  const renderItem = ({ item }: { item: Todo }) => {
+    const category = categories?.find(c => c.id === item.categoryId);
+    
+    return (
+      <TodoItem
+        todo={item}
+        onPress={onPressTodo}
+        onToggleComplete={onToggleComplete}
+        onEdit={onEditTodo}
+        onDelete={onDeleteTodo}
+        category={category}
+      />
+    );
+  };
 
   const renderEmptyState = () => {
     if (renderEmpty) {
@@ -68,9 +70,6 @@ export function TodoList({
         data={todos}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={onRefresh} />
-        }
         ListEmptyComponent={renderEmptyState}
         contentContainerStyle={[
           todos.length === 0 && styles.emptyContentContainer,

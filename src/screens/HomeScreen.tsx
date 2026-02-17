@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,20 +7,25 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
 import { useTodos } from '../hooks/useTodos';
 import { useCategories } from '../hooks/useCategories';
 import { useAppState } from '../hooks/useAppState';
 import { TodoList } from '../components/TodoList';
 import { AddTodoModal } from '../components/AddTodoModal';
-import { Todo, Priority } from '../types';
-import { SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants';
+import { CategoryManager } from '../components/CategoryManager';
+import { Todo, Priority, Category } from '../types';
+import { SPACING, FONT_SIZES, BORDER_RADIUS, PRIORITIES } from '../constants';
+import { getCategoryColor } from '../constants/colors';
 
 export function HomeScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTodo, setEditingTodo] = useState<Todo | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
   const {
     todos,
@@ -30,16 +35,27 @@ export function HomeScreen() {
     updateTodo,
     deleteTodo,
     toggleTodoComplete,
-    getFilteredAndSortedTodos,
     loadTodos,
   } = useTodos();
 
-  const { categories, getCategoryName } = useCategories();
-  const { appState } = useAppState();
+  const { categories, getCategoryName, addCategory, updateCategory, deleteCategory } = useCategories();
+  const { appState, setCurrentCategoryId } = useAppState();
 
   useEffect(() => {
     loadTodos();
   }, [loadTodos]);
+
+  const handleAddCategory = async (categoryData: Omit<Category, 'id' | 'createdAt' | 'updatedAt'>) => {
+    await addCategory(categoryData);
+  };
+
+  const handleUpdateCategory = async (id: string, updates: Partial<Category>) => {
+    await updateCategory(id, updates);
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    await deleteCategory(id);
+  };
 
   const handleAddTodo = async (todoData: Omit<Todo, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
@@ -80,25 +96,56 @@ export function HomeScreen() {
     setShowAddModal(true);
   };
 
-  const getFilteredTodos = () => {
-    let filterOptions = {};
+  const filteredTodos = useMemo(() => {
+    let filteredTodos = todos.filter(todo => !todo.deletedAt);
     
+    // 应用状态筛选
     if (selectedFilter === 'active') {
-      filterOptions = { ...filterOptions, isCompleted: false };
+      filteredTodos = filteredTodos.filter(todo => !todo.isCompleted);
     } else if (selectedFilter === 'completed') {
-      filterOptions = { ...filterOptions, isCompleted: true };
+      filteredTodos = filteredTodos.filter(todo => todo.isCompleted);
     }
 
+    // 应用分类筛选
     if (appState.currentCategoryId) {
-      filterOptions = { ...filterOptions, categoryId: [appState.currentCategoryId] };
+      filteredTodos = filteredTodos.filter(todo => todo.categoryId === appState.currentCategoryId);
     }
 
-    return getFilteredAndSortedTodos(
-      filterOptions,
-      appState.sortBy,
-      appState.sortOrder
-    );
-  };
+    // 应用搜索过滤
+    if (searchQuery.trim()) {
+      const searchLower = searchQuery.toLowerCase();
+      filteredTodos = filteredTodos.filter(todo =>
+        todo.title.toLowerCase().includes(searchLower) ||
+        (todo.description && todo.description.toLowerCase().includes(searchLower))
+      );
+    }
+
+    // 应用排序
+    filteredTodos.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (appState.sortBy) {
+        case 'priority':
+          const priorityOrder = PRIORITIES[a.priority].order - PRIORITIES[b.priority].order;
+          comparison = priorityOrder;
+          break;
+        case 'dueDate':
+          if (!a.dueDate && !b.dueDate) comparison = 0;
+          else if (!a.dueDate) comparison = 1;
+          else if (!b.dueDate) comparison = -1;
+          else comparison = a.dueDate.getTime() - b.dueDate.getTime();
+          break;
+        case 'createdAt':
+        default:
+          comparison = a.createdAt.getTime() - b.createdAt.getTime();
+          break;
+      }
+      
+      return appState.sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return filteredTodos;
+  }, [todos, selectedFilter, appState.currentCategoryId, appState.sortBy, appState.sortOrder, searchQuery]);
 
   const stats = {
     total: todos.filter(t => !t.deletedAt).length,
@@ -108,7 +155,15 @@ export function HomeScreen() {
 
   const renderHeader = () => (
     <View style={styles.header}>
-      <Text style={styles.title}>我的待办</Text>
+      <View style={styles.headerTop}>
+        <Text style={styles.title}>我的待办</Text>
+        <TouchableOpacity
+          style={styles.categoryManageButton}
+          onPress={() => setShowCategoryManager(true)}
+        >
+          <Text style={styles.categoryManageButtonText}>管理分类</Text>
+        </TouchableOpacity>
+      </View>
       
       {/* 统计信息 */}
       <View style={styles.statsContainer}>
@@ -167,6 +222,50 @@ export function HomeScreen() {
             </Text>
           </TouchableOpacity>
         ))}
+        
+        {/* 分类筛选按钮 */}
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            !appState.currentCategoryId && styles.activeFilterButton,
+          ]}
+          onPress={() => setCurrentCategoryId(undefined)}
+        >
+          <Text
+            style={[
+              styles.filterButtonText,
+              !appState.currentCategoryId && styles.activeFilterButtonText,
+            ]}
+          >
+            全部分类
+          </Text>
+        </TouchableOpacity>
+        
+        {categories.map(category => (
+          <TouchableOpacity
+            key={category.id}
+            style={[
+              styles.filterButton,
+              appState.currentCategoryId === category.id && styles.activeFilterButton,
+            ]}
+            onPress={() => setCurrentCategoryId(category.id)}
+          >
+            <View
+              style={[
+                styles.categoryIndicator,
+                { backgroundColor: getCategoryColor(category.color) },
+              ]}
+            />
+            <Text
+              style={[
+                styles.filterButtonText,
+                appState.currentCategoryId === category.id && styles.activeFilterButtonText,
+              ]}
+            >
+              {category.name}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
     </View>
   );
@@ -182,49 +281,195 @@ export function HomeScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      {renderHeader()}
-      
-      <TodoList
-        todos={getFilteredTodos()}
-        loading={loading}
-        onRefresh={loadTodos}
-        onPressTodo={handlePressTodo}
-        onToggleComplete={toggleTodoComplete}
-        onEditTodo={handlePressTodo}
-        onDeleteTodo={handleDeleteTodo}
-        renderEmpty={renderEmptyState}
-      />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <Text style={styles.title}>我的待办</Text>
+            <TouchableOpacity
+              style={styles.categoryManageButton}
+              onPress={() => setShowCategoryManager(true)}
+            >
+              <Text style={styles.categoryManageButtonText}>管理分类</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {/* 统计信息 */}
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{stats.total}</Text>
+              <Text style={styles.statLabel}>总计</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{stats.pending}</Text>
+              <Text style={styles.statLabel}>进行中</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{stats.completed}</Text>
+              <Text style={styles.statLabel}>已完成</Text>
+            </View>
+          </View>
 
-      {/* 添加按钮 */}
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => {
-          setEditingTodo(undefined);
-          setShowAddModal(true);
-        }}
-      >
-        <Text style={styles.addButtonText}>+</Text>
-      </TouchableOpacity>
+          {/* 搜索框 */}
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="搜索待办事项..."
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
 
-      {/* 添加/编辑模态框 */}
-      <AddTodoModal
-        visible={showAddModal}
-        onClose={() => {
-          setShowAddModal(false);
-          setEditingTodo(undefined);
-        }}
-        onSave={editingTodo ? handleEditTodo : handleAddTodo}
-        categories={categories}
-        currentIdentityId={appState.currentIdentityId}
-        editingTodo={editingTodo}
-      />
-    </View>
+          {/* 状态筛选 */}
+          <View style={styles.statusFilterSection}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterContent}
+            >
+              {[
+                { key: 'all', label: '全部' },
+                { key: 'active', label: '进行中' },
+                { key: 'completed', label: '已完成' },
+              ].map(filter => (
+                <TouchableOpacity
+                  key={filter.key}
+                  style={[
+                    styles.filterButton,
+                    selectedFilter === filter.key && styles.activeFilterButton,
+                  ]}
+                  onPress={() => setSelectedFilter(filter.key as any)}
+                >
+                  <Text
+                    style={[
+                      styles.filterButtonText,
+                      selectedFilter === filter.key && styles.activeFilterButtonText,
+                    ]}
+                  >
+                    {filter.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* 分类筛选 */}
+          <View style={styles.categoryFilterSection}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterContent}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  !appState.currentCategoryId && styles.activeFilterButton,
+                ]}
+                onPress={() => setCurrentCategoryId(undefined)}
+              >
+                <Text
+                  style={[
+                    styles.filterButtonText,
+                    !appState.currentCategoryId && styles.activeFilterButtonText,
+                  ]}
+                >
+                  全部分类
+                </Text>
+              </TouchableOpacity>
+              
+              {categories.map(category => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    styles.filterButton,
+                    appState.currentCategoryId === category.id && styles.activeFilterButton,
+                  ]}
+                  onPress={() => setCurrentCategoryId(category.id)}
+                >
+                  <View
+                    style={[
+                      styles.categoryIndicator,
+                      { backgroundColor: getCategoryColor(category.color) },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.filterButtonText,
+                      appState.currentCategoryId === category.id && styles.activeFilterButtonText,
+                    ]}
+                  >
+                    {category.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+        
+        <View style={styles.content}>
+          <TodoList
+            todos={filteredTodos}
+            onPressTodo={handlePressTodo}
+            onToggleComplete={toggleTodoComplete}
+            onEditTodo={handlePressTodo}
+            onDeleteTodo={handleDeleteTodo}
+            renderEmpty={renderEmptyState}
+            categories={categories}
+            getCategoryName={getCategoryName}
+          />
+        </View>
+
+        {/* 添加按钮 */}
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => {
+            setEditingTodo(undefined);
+            setShowAddModal(true);
+          }}
+        >
+          <Text style={styles.addButtonText}>+</Text>
+        </TouchableOpacity>
+
+        {/* 添加/编辑模态框 */}
+        <AddTodoModal
+          visible={showAddModal}
+          onClose={() => {
+            setShowAddModal(false);
+            setEditingTodo(undefined);
+          }}
+          onSave={editingTodo ? handleEditTodo : handleAddTodo}
+          categories={categories}
+          currentIdentityId={appState.currentIdentityId}
+          editingTodo={editingTodo}
+        />
+
+        {/* 分类管理模态框 */}
+        <CategoryManager
+          visible={showCategoryManager}
+          onClose={() => setShowCategoryManager(false)}
+          categories={categories}
+          onAddCategory={addCategory}
+          onUpdateCategory={handleUpdateCategory}
+          onDeleteCategory={handleDeleteCategory}
+          currentIdentityId={appState.currentIdentityId}
+        />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
   container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  content: {
     flex: 1,
     backgroundColor: '#f9fafb',
   },
@@ -235,11 +480,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.MD,
+  },
   title: {
     fontSize: FONT_SIZES.XXL,
     fontWeight: '700',
     color: '#1f2937',
-    marginBottom: SPACING.MD,
+  },
+  categoryManageButton: {
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: SPACING.XS,
+    borderRadius: BORDER_RADIUS,
+  },
+  categoryManageButtonText: {
+    fontSize: FONT_SIZES.SM,
+    color: '#6b7280',
+    fontWeight: '500',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -262,6 +523,12 @@ const styles = StyleSheet.create({
   searchContainer: {
     marginBottom: SPACING.MD,
   },
+  statusFilterSection: {
+    marginBottom: SPACING.SM,
+  },
+  categoryFilterSection: {
+    marginBottom: SPACING.SM,
+  },
   searchInput: {
     borderWidth: 1,
     borderColor: '#d1d5db',
@@ -277,6 +544,8 @@ const styles = StyleSheet.create({
     paddingRight: SPACING.MD,
   },
   filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: SPACING.MD,
     paddingVertical: SPACING.SM,
     marginRight: SPACING.SM,
@@ -340,5 +609,11 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  categoryIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: SPACING.XS,
   },
 });

@@ -12,6 +12,8 @@ import {
 import { Todo, Priority, Category } from '../types';
 import { PRIORITIES, BORDER_RADIUS, SPACING, FONT_SIZES, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH } from '../constants';
 import { ValidationUtils } from '../utils';
+import { CustomDatePicker } from './CustomDatePicker';
+import { getCategoryColor } from '../constants/colors';
 
 interface AddTodoModalProps {
   visible: boolean;
@@ -35,6 +37,7 @@ export function AddTodoModal({
   const [priority, setPriority] = useState<Priority>('not-urgent-not-important');
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // 当 editingTodo 变化时，更新表单状态
   useEffect(() => {
@@ -53,6 +56,21 @@ export function AddTodoModal({
       setDueDate(undefined);
     }
   }, [editingTodo]);
+
+  const handleDateConfirm = (date: Date) => {
+    setDueDate(date);
+    setShowDatePicker(false);
+  };
+
+  const formatDateDisplay = (date: Date) => {
+    return date.toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   const handleSave = () => {
     const titleValidation = ValidationUtils.validateTitle(title);
@@ -127,7 +145,7 @@ export function AddTodoModal({
       <View
         style={[
           styles.categoryColor,
-          { backgroundColor: category.color === 'white' ? '#e5e7eb' : category.color },
+          { backgroundColor: getCategoryColor(category.color) },
         ]}
       />
       <Text
@@ -232,7 +250,38 @@ export function AddTodoModal({
               {categories.map(renderCategoryOption)}
             </ScrollView>
           </View>
+
+          {/* 截止日期 */}
+          <View style={styles.section}>
+            <Text style={styles.label}>截止日期</Text>
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={styles.dateButtonText}>
+                {dueDate ? formatDateDisplay(dueDate) : '选择日期和时间'}
+              </Text>
+              <Text style={styles.dateButtonIcon}>📅</Text>
+            </TouchableOpacity>
+            {dueDate && (
+              <TouchableOpacity
+                style={styles.clearDateButton}
+                onPress={() => setDueDate(undefined)}
+              >
+                <Text style={styles.clearDateButtonText}>清除日期</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </ScrollView>
+
+        {/* 日期选择器 */}
+        <CustomDatePicker
+          visible={showDatePicker}
+          value={dueDate}
+          onConfirm={handleDateConfirm}
+          onCancel={() => setShowDatePicker(false)}
+          minimumDate={new Date()}
+        />
       </View>
     </Modal>
   );
@@ -359,5 +408,30 @@ const styles = StyleSheet.create({
   selectedCategoryText: {
     color: '#1d4ed8',
     fontWeight: '500',
+  },
+  dateButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: BORDER_RADIUS,
+    padding: SPACING.SM,
+    backgroundColor: '#f9fafb',
+  },
+  dateButtonText: {
+    fontSize: FONT_SIZES.MD,
+    color: '#1f2937',
+  },
+  dateButtonIcon: {
+    fontSize: FONT_SIZES.MD,
+  },
+  clearDateButton: {
+    marginTop: SPACING.SM,
+    alignSelf: 'flex-start',
+  },
+  clearDateButtonText: {
+    fontSize: FONT_SIZES.SM,
+    color: '#ef4444',
   },
 });

@@ -4,11 +4,11 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Animated,
 } from 'react-native';
-import { Todo, Priority } from '../types';
+import { Todo, Priority, Category } from '../types';
 import { PRIORITIES, BORDER_RADIUS, SPACING, FONT_SIZES } from '../constants';
 import { DateUtils } from '../utils';
+import { getCategoryColor } from '../constants/colors';
 
 interface TodoItemProps {
   todo: Todo;
@@ -16,7 +16,7 @@ interface TodoItemProps {
   onToggleComplete: (id: string) => void;
   onEdit: (todo: Todo) => void;
   onDelete: (id: string) => void;
-  isDragging?: boolean;
+  category?: Category;
 }
 
 export function TodoItem({
@@ -25,103 +25,51 @@ export function TodoItem({
   onToggleComplete,
   onEdit,
   onDelete,
-  isDragging = false,
+  category,
 }: TodoItemProps) {
-  const animatedValue = React.useRef(new Animated.Value(0)).current;
-
-  React.useEffect(() => {
-    Animated.timing(animatedValue, {
-      toValue: isDragging ? 1 : 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-  }, [isDragging, animatedValue]);
-
   const priorityColor = PRIORITIES[todo.priority].color;
   const isOverdue = todo.dueDate && DateUtils.isOverdue(todo.dueDate) && !todo.isCompleted;
-
-  const handleLongPress = () => {
-    onEdit(todo);
-  };
 
   const handleSwipeLeft = () => {
     onDelete(todo.id);
   };
 
   return (
-    <Animated.View
-      style={[
-        styles.container,
-        {
-          opacity: animatedValue.interpolate({
-            inputRange: [0, 1],
-            outputRange: [1, 0.7],
-          }),
-          transform: [
-            {
-              scale: animatedValue.interpolate({
-                inputRange: [0, 1],
-                outputRange: [1, 0.95],
-              }),
-            },
-            {
-              rotate: animatedValue.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['0deg', '2deg'],
-              }),
-            },
-          ],
-        },
-        todo.isCompleted && styles.completedContainer,
-        isOverdue && styles.overdueContainer,
-      ]}
-    >
+    <View style={[styles.container, todo.isCompleted && styles.completedContainer]}>
       <TouchableOpacity
         style={styles.content}
         onPress={() => onPress(todo)}
-        onLongPress={handleLongPress}
         activeOpacity={0.7}
       >
-        {/* 优先级指示器 */}
-        <View
-          style={[
-            styles.priorityIndicator,
-            { backgroundColor: priorityColor },
-          ]}
-        />
-
-        {/* 复选框 */}
-        <TouchableOpacity
-          style={[styles.checkbox, todo.isCompleted && styles.checkedCheckbox]}
-          onPress={() => onToggleComplete(todo.id)}
-          activeOpacity={0.7}
-        >
-          {todo.isCompleted && <Text style={styles.checkmark}>✓</Text>}
-        </TouchableOpacity>
-
-        {/* 内容区域 */}
-        <View style={styles.textContent}>
-          <Text
-            style={[
-              styles.title,
-              todo.isCompleted && styles.completedTitle,
-            ]}
-            numberOfLines={2}
-          >
-            {todo.title}
-          </Text>
-
-          {todo.description && (
+        {/* 左侧优先级指示器 */}
+        <View style={[styles.priorityIndicator, { backgroundColor: priorityColor }]} />
+        
+        {/* 主要内容 */}
+        <View style={styles.mainContent}>
+          {/* 标题和描述 */}
+          <View style={styles.textContainer}>
             <Text
               style={[
-                styles.description,
-                todo.isCompleted && styles.completedDescription,
+                styles.title,
+                todo.isCompleted && styles.completedTitle,
               ]}
-              numberOfLines={2}
+              numberOfLines={1}
             >
-              {todo.description}
+              {todo.title}
             </Text>
-          )}
+            
+            {todo.description && (
+              <Text
+                style={[
+                  styles.description,
+                  todo.isCompleted && styles.completedDescription,
+                ]}
+                numberOfLines={2}
+              >
+                {todo.description}
+              </Text>
+            )}
+          </View>
 
           {/* 底部信息 */}
           <View style={styles.footer}>
@@ -139,36 +87,31 @@ export function TodoItem({
               </View>
             )}
 
-            {todo.attachments.length > 0 && (
-              <View style={styles.attachmentContainer}>
-                <Text style={styles.attachmentText}>
-                  📎 {todo.attachments.length}
-                </Text>
-              </View>
-            )}
-
-            {todo.comments.length > 0 && (
-              <View style={styles.commentContainer}>
-                <Text style={styles.commentText}>
-                  💬 {todo.comments.length}
-                </Text>
+            {/* 分类标签 */}
+            {category && (
+              <View style={styles.categoryTag}>
+                <Text style={styles.categoryText}>{category.name}</Text>
               </View>
             )}
           </View>
         </View>
 
-        {/* 操作按钮 */}
-        <View style={styles.actions}>
+        {/* 右侧完成状态按钮 */}
+        <View style={styles.rightSection}>
           <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => onEdit(todo)}
-            activeOpacity={0.7}
+            style={[
+              styles.completeButton,
+              todo.isCompleted && styles.completedButton,
+            ]}
+            onPress={() => onToggleComplete(todo.id)}
           >
-            <Text style={styles.actionButtonText}>编辑</Text>
+            <Text style={styles.completeButtonText}>
+              {todo.isCompleted ? '✓' : ''}
+            </Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -176,7 +119,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: '#ffffff',
     marginHorizontal: SPACING.SM,
-    marginVertical: SPACING.XS,
+    marginVertical: 3, // 增加卡片间距
     borderRadius: BORDER_RADIUS,
     shadowColor: '#000',
     shadowOffset: {
@@ -190,48 +133,32 @@ const styles = StyleSheet.create({
   completedContainer: {
     opacity: 0.7,
   },
-  overdueContainer: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#ef4444',
-  },
   content: {
     flexDirection: 'row',
-    padding: SPACING.MD,
-    alignItems: 'flex-start',
+    padding: SPACING.SM, // 减少内边距
+    alignItems: 'center',
   },
   priorityIndicator: {
     width: 4,
+    height: '100%',
+    position: 'absolute',
+    left: 0,
+    top: 0,
     borderTopLeftRadius: BORDER_RADIUS,
     borderBottomLeftRadius: BORDER_RADIUS,
-    marginRight: SPACING.SM,
   },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderWidth: 2,
-    borderColor: '#d1d5db',
-    borderRadius: 6,
-    marginRight: SPACING.SM,
-    justifyContent: 'center',
-    alignItems: 'center',
+  mainContent: {
+    flex: 1,
+    marginLeft: SPACING.SM,
   },
-  checkedCheckbox: {
-    backgroundColor: '#10b981',
-    borderColor: '#10b981',
-  },
-  checkmark: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  textContent: {
+  textContainer: {
     flex: 1,
   },
   title: {
     fontSize: FONT_SIZES.MD,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#1f2937',
-    marginBottom: SPACING.XS,
+    marginBottom: 2, // 减少标题底部间距
   },
   completedTitle: {
     textDecorationLine: 'line-through',
@@ -240,18 +167,21 @@ const styles = StyleSheet.create({
   description: {
     fontSize: FONT_SIZES.SM,
     color: '#6b7280',
-    marginBottom: SPACING.SM,
+    lineHeight: 18,
   },
   completedDescription: {
-    color: '#d1d5db',
+    textDecorationLine: 'line-through',
+    color: '#9ca3af',
   },
   footer: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    flexWrap: 'wrap',
+    marginTop: 4, // 减少顶部间距
   },
   dueDateContainer: {
-    marginRight: SPACING.SM,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   dueDate: {
     fontSize: FONT_SIZES.XS,
@@ -261,31 +191,38 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontWeight: '500',
   },
-  attachmentContainer: {
-    marginRight: SPACING.SM,
+  rightSection: {
+    alignItems: 'center',
+    justifyContent: 'center', // 让完成按钮垂直居中
+    minWidth: 70, // 减少最小宽度
   },
-  attachmentText: {
-    fontSize: FONT_SIZES.XS,
-    color: '#6b7280',
-  },
-  commentContainer: {
-    marginRight: SPACING.SM,
-  },
-  commentText: {
-    fontSize: FONT_SIZES.XS,
-    color: '#6b7280',
-  },
-  actions: {
-    marginLeft: SPACING.SM,
-  },
-  actionButton: {
-    paddingHorizontal: SPACING.SM,
-    paddingVertical: SPACING.XS,
+  categoryTag: {
     backgroundColor: '#f3f4f6',
-    borderRadius: 4,
+    paddingHorizontal: SPACING.XS, // 减少水平内边距
+    paddingVertical: 2, // 减少垂直内边距
+    borderRadius: BORDER_RADIUS / 2,
+    minHeight: 20, // 减少最小高度
+    alignSelf: 'flex-start', // 左对齐
   },
-  actionButtonText: {
+  categoryText: {
     fontSize: FONT_SIZES.XS,
-    color: '#6b7280',
+    color: '#374151',
+    fontWeight: '500',
+  },
+  completeButton: {
+    width: 20, // 减少按钮宽度
+    height: 20, // 减少按钮高度
+    borderRadius: 10, // 相应调整圆角
+    backgroundColor: '#e5e7eb',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  completedButton: {
+    backgroundColor: '#10b981',
+  },
+  completeButtonText: {
+    fontSize: FONT_SIZES.SM,
+    color: '#ffffff',
+    fontWeight: '600',
   },
 });
